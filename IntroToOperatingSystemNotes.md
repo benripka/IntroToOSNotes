@@ -198,3 +198,4 @@ There is long term scheduling, which chooses what process to load into memory an
 • Response time (lower is better)
 - what user sees from keypress to character on screen
 - time between when process is ready to run and its next I/O request (or completion time)
+
