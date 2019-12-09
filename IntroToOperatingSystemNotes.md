@@ -185,17 +185,109 @@ You can define a process as CPU bound, IO bound, or a mix of the two. Thi smeans
 - **fairness** tells what fraction of the CPU cycles goes to a given task.
 
 There is long term scheduling, which chooses what process to load into memory and how many (degree of multiprogramming) to begin with. short-term scheduling is the spu scheduling that chooses what runs out of the ready queue at a given moment. Scheduling is often done online, or on the fly, but if the bust lengths are know and execution order you can actually get better performance by doing it offline. The scheduler runs when a process ends, in the cpu, when an interupt occurs, and when a process is created (it needs to find where it should go in the ready queue). A more complex scheduler might be **preemptivde** which basically means its able to cause its own interrupts on the CPU to switch things up. Some of the performance metrics are given:
+  
+-  CPU Utilization (higher is better)
+ percentage of time CPU is busy
+- Throughput (higher is better)
+ number of processes completing in a unit of time (e.g., in one second)
+ overhead reduces the throughput
+- Waiting time (lower is better)
+  total amount of time that process is in ready queue
+- Turnaround time (lower is better)
+ length of time it takes to run process from initialization to termination, including all waiting time
+- Response time (lower is better)
+ what user sees from keypress to character on screen
+ time between when process is ready to run and its next I/O request (or completion time)
 
-• CPU Utilization (higher is better)
-- percentage of time CPU is busy
-• Throughput (higher is better)
-- number of processes completing in a unit of time (e.g., in one second)
-- overhead reduces the throughput
-• Waiting time (lower is better)
-- total amount of time that process is in ready queue
-• Turnaround time (lower is better)
-- length of time it takes to run process from initialization to termination, including all waiting time
-• Response time (lower is better)
-- what user sees from keypress to character on screen
-- time between when process is ready to run and its next I/O request (or completion time)
+You need to choose an algorithm that will best suit a given appplciation. They are not all the same, infact its very hard to find a way to optimize them all. the following examples of algorithms that assume there is 1 CPU with 1 core and each process has only 1 thread (very simplified):
+
+- **FCFS** or first come first serve is the base. It just completely finished tasks in order of recieving them. FCFS will still however kick out a process if it requests IO and throw it at the back. You can make simple calculations for these to get the average turn around time (time from entering the queue to completion for each task) and the waiting time which is how long its in the ready queue. It might help to draw a diagram where you see the contents of the CPU and the flow of time as things finish. Fairly straight forward in this case. You could also create a table specifying the burst time, and arrival time of each. Lots of the metrics are expressed as averages. the table might be handy if the arrival times are not all at 0. Recall that turn around and wait times are from THAT PROCESSES arrival time, and may differ from the others. Its overall not that good because it has extremly variable wait times and leaves IO devices idle.
+- **Round Robin** scheduling involves setting a timer to premptively pop the process out of the CPU if it takes to long. each pid gets a max time to try and finish. Either to quick or too slow is bad. For equal size tasks this isnt great. It can improve turnaround alot thogh. Stops huge tasks from blocking the shit out of tiny little things. 
+- **SJF** is the shortest job first. It will use estimates of burst time to pick the shortest one and thus take advantagde of I/O wait times. Problem is long running CPU ones can get igored. You can estimate the burst lenght by using a moving average estimator.
+
+Starvation meeans that a process will never be picked to run in the CPU. One of th best ways to optimize the process is with multilevel priority queues, were priority is assigned by the user through nice(). The priority queues each run a round robin with exponentially increasing deltas until the bottom which is straight up FCFS. The high priority ones need to be done at high delta so they all have the chance to get there. Large jobs will move to lower queues and therefore won't block the other stuff. Its a natural filer. This setup is called a MFQ, or multilevel feedback queue. Very smart.
+
+<h1>Threads</h1>
+
+A thread is a single sequence of execution that can be treated as a seperatly scheduled task. Threads have their own stack for local variables / temportaries like return calues and aprameteres. They share the heap but often can have special memory called thread local memory aswell. All the details of a thread are stored in the TCB (thread control block). The TCB has the tid, scheduling info (niceness) aswell as much more. They are an improvement on multi process systems for cooperating tasks. That's because ALL of their memory is shared, so no need for like, message passing or any of that shit.
+
+<h2>Parallelism</h2>
+
+Concurency and Paralellism are NOT the same thing. You can have concurancy without parallellism. Concurency just means that all process make progress, not just one after another. context switching (scheduling) can do this aswell as parallelism. In order to use parallelism you must identify the divisions between tasks. Tasks should be independant of eachother. NExt, you need to split up the data in a way that stops conflict between the operation of the threads. If there is any data dependancies they must be synchronized properly. The OS has its own threads called Kernel threads to exploit paralellism for itself. This helps becayse context switching is much cheapter between threads than processes. User level threads are not recognized or scheduled by the OS. All that work is done explicitly by the programmer, using creation, deletion, synchronization, yield functions given by libraries. In user level threads the schduling algorithm is defined in a problem dependant way IN the software. It can do this by having a thread give up the processor to others. This is called yielding. User level threads are usually much faster than kernel level threads. 
+
+User level threads cause a problem though, because the scheduler is unaware of them. It treat to processes the same even if one has way way way more threads, giving the same time and even pauseing it entirely if just a single thread makes an IO call. Not good. Usually implementations involve jsut creating  a kernel thread for every user level thread. this forms a 1 to 1 relation that is handles by the thread library (pthreads for example). These will handle the complexity of setting up the threads. 
+
+<h2>POSIX Threading</h2>
+
+The complexity of mapping to kernel threads is usually hidden by library functions (pthreads) or by the compiler itself (demarkated by #pragma parallel). Thread creation can work in eiher the user domain or kernel domain. It is implemented by the pthread library in both for unnix systems, and WIN 32 for the others. Some of the pthread calls can be seen below:
+
+- pthread_create( ) creates a separate thread and returns its handle
+‣ takes a start_routine which is invoked with the specified arguments
+- pthread_attr_init( ) sets the initial attributes of a thread
+‣ scheduling information, stack size, stack address, etc.
+- pthread_join( ) allows the calling thread to wait for the specified thread to
+terminate
+‣ the calling thread is blocked until that currently executing thread has completed
+- pthread_yield( ) causes the calling thread to relinquish the CPU voluntarily
+- pthread_exit( ) terminates the calling thread and executes clean-up handlers
+defined by pthread_cleanup_push( )
+
+
+Threads can be setup to handle threads where all threads recieve async signals, or just the first to listen. Threads can independantly choose to mask signals after creation. Sync singals will be sent to the threads that created it only. You can send a signal to a specific thread if you know it by going pthread_kill() with it. You can cancel a thread in two way, let it die when its ready or just kill it righ away, purhaps losing resources as you do. A thread can also set its own cancelation points that exist for healthy cancelation. Many blocking calls are builtin cancelation points because the thread might hang there for a bit before being canceled.
+
+Using threads to say... Implement a server, can be super shit because if you get a boat load of requests at once you run the risk of running out of resources. Threadpool cure this. You know what that is. The fork join model is basically the same as a threadpool but it runs sequentially. Threads share all global variables and thus synchronization primitives should be used to protect it. 
+
+A **race condition** occurs when the order in which threads use shared data impacts the result of the thread execution. 
+
+Dekkers algorithm is a solution to the milk prblem, it says you should set your lock, and then while the other threads lock is set aswell you check if its your turn. We can use this support to eliminate the need for things like busy waiting 
+
+<h2>Memory Protection</h2>
+
+The MMU is the memory management unit. It is used to translate beteween virtual addresses (that the CPU will read from the code in a process) and translates it into physical addresses. You can perform the translation at compile, load, and execution time. If you do it at compile time the physical and logical addresses must be the same. If you do it at execution time then you need hardware support from the **MMU**. In multiprogramming you need address protection so that they can all exist under the addumption of infinite address space. The cost of memory protextion hardware is simply two registers and a comparator circuit. The two registers will keep (for every process) the memory that its space starts at, and the size offset. The hardware checks every time for out of bounds read / writes and sends out a trap error if they are attempted. 
+
+In **Static relocation** means before the process is executed, the OS goes through the memory and makes all the addresses physical. This can be done simply by adding to each of them the base registers contents (lowest address value allocated to the process). **Dynamic Relocation** translates addresses to physical on the fly. This incurs a small computational overhead but also allows the process to be moved around in RAM on the go. in DR, the base register is called the relocation register, and we need another adder circuit to find the PA on the fly.
+
+**Fragmentation** can be internal or external to a process, and is simply unused address space. There are many differenct types of **allocation algorithms** that will impact the type of fragmentation that can occur. Policies are considered good if they reduce fragmentation. Worsdt-fit usually isn't that good. 
+- **First Fit** allocation simply puts the process in the first block that is big enough. It is very simple but slow as you will potentially need to search the whole mem space. It needs to maintain a list of all blocks currently in the memory, sorted by address location. It can also cause external fragmentation as small processes die.
+- **Best-fit allocation** is done by looking for the minimum sized free block that the process fits in. It minimizes fragmentatino but is slower to allocate / deallocate. It maintains a list of free blocks and merges if possible on deallocation, so it needs to check this list. 
+- **Worst-fit** is used to minimize the amount of small fragments. It works best if there is medium sized allocations. 
+
+**Memory compaction** is done by moving processes around to reduce the fragmentation in the memory. This can be done in many ways but it is most important that the processes don't notice the change. If there is not enough space in RAM for the processes, you can swap a process out and into the HD and put it back when it becomes active again. Compaction becomes much easier with swapping as you can settle things together one at a time.
+
+<h2>Segmentation</h2>
+
+So far we've considered a direct translation from a set of virtual adress $[1, MAX_{proc}]$ to physical address [1, MAX$_{sys}$]. This is great and manages to pull off the abstraction layer providing infinite isolated address space to each process, but sometimes we don't want process to be completly isolated! Sometimes we want them to be able to share some amount of data. In order to do this we need a way to section off data at a level that the programmer could potentially specify / work with. This is what segmentation does. Segments are groups of addresses use by a process. In segmentation MM, the virtual address created by the compiler consists of a segment number, and an offset from that segment. Segments are usually some form of division in the process that makes logical sense to the programmer, for example the stack might be in one segment, a function in another, etc.
+
+The addresses can then be translated via a **segmentation table** which is a table where at the row given by a segment number you can find the base and limit adresses and therefore add the offset of the vitual address to them / Check that the address is within the limits for protection! The **problem** however with segmentation is that the segments are of ARBITRARY size, since they just depend on how big a funciton is, etc. So allocation becomes very challenging. Ontop of this you can't utilize memory very well, because the WHOLE segment needs to go into memory in order for it to work, but in reality you quite often do not use most of the memory in a segment. the **90/10** rule says that you spend 90% of the time accessing just 10% of a processes memory. 
+
+<h2>Paging</h2>
+
+Paging seeks to solve the same kind of problem as segmentation, but also make it such that the enitre memory space of a given process need not be loaded into memory for it to work. Instead of segments of variable length, the process virtual memory is partitioned into same sized blocks called pages. Pages are then translated to Frames of the same size, so virtual addresses consist of page numbers and offsets (that can be converted to frame numbers and offsets by looking at the page table). The nice thing is that you can actually take pages in and out of main memory as you please, swapping them out to secondary disk storage. The reason this is good is that the process will spend the vast majority of its time in just a few pages of the process. So you can use a smart allocation algorithms to deside when a page isn't being used, and therefore swap it out, making room in memory for other things! This is very important for multiprogramming machines, which are most modern machines. But the page table becomes very important and we want to be able to find the frame number very fast for a given page number. the page table is stored in memory aswell, which can be up to a 100ns. Instead, a small set of registers called the **Translation LookAside Buffer** of TLB which can be stored of chip in really fast chache. It is so small though that you cannot fit all the page numbers in it, so it only actually stores the common ones. The general policy is to look in the TLB no matter what, if you find the page num you're all good. If not, find the page num in memory (which takes alot more time), load it into the TLB and continue, so now you have it to use later! The TLB has a valid bit to show that the value stored there is relevant to the current process. This is because the stuff in there might be from an old processes logical space, which is different but may still have the same page numbers! Uh Oh!
+
+If there was no TLB it would cost about $\mathrm{EAT}=2 \times C_{m a}$ seconds to get your memory where $C_{m a}$ is the cost of a single memory address. This is because you would need  to access the table (from memory) to find the frame num for a page, then access the memory at that frame num to legit get the entry! So what about with a TLB? Well first off there is only a probability that the page number will be in there and valid, so it may still take this double memory access time, but look at this:
+
+$$\mathrm{E} \mathrm{AT}=\rho_{h i t}\left(C_{m a}+C_{T L B}\right)+\left(1-\rho_{h i t}\right)\left(2 \times C_{m a}+C_{T L B}\right)$$
+
+Assuming there is a decent hit (page num was in TLB) probability, you usually only have to access the main memory once and the TLB once. If you had a miss, then there is SLIIIGHTLY more time then before but because of the 90/10 rule, usually the TLB will get near-optimally populated as the program runs! This is what the TLB is all about: Putting the page numbers that are common in a real accessible place. 
+
+When you load a new process who's memory has k pages, you first load those k pages into k free frames of memory. If there isnt k free frames (because of the other processes) you make them free by disgarding stuff that isn't needed any more. While you do this you make sure to load the page numbers and their new corresponding frame nums into the in-memory page table. Finally, you sweep over the TLB and mark all entries as invalid (flush it) because anything in their is from the last process. Then the process can start, and as it goes in will poopulate and pseudo optimize its contents to match the pages that are frequently accessed. On a context switch, both the TLB and the page table values are stored in the processes PCB. Then, when it gets loaded back in they can be repolulated after flushing both and then it restarts asif nothing even happened!
+
+Paging allows for a convenient optimization of the common fork() system call that duplicates an entrire process. What you can do on a fork is not copy any of the pages, but rather wait and see if the child actually tries to write to them. If it does, then copy over that page. By doing it on the fly you avoid the waste that would come as it calls exec() immediatly, which is common. 
+
+<h2>Segmented Paging</h2>
+
+We liked segmentation because it gave us the ability to break down the virtual memory space into logical segments that made sense to the programmer! Functions, stack, etc. But we really liked paging because it removes external fragmentation and lets us optimize the stuff we actually store in memory to the stuff we use often. Since pages are usually much smaller than segments, why not do both? Why not break the space into segments, then each segment be made up of pages, then each page translate to a fram? This is calleded segmented pages. In this case the VA consists of (segment number)(page number)(offset) and you can translate to PA by using the page number as an offset from the entry in a page-segment table given by the segment number index, and then that will givve you the frame number. Now you just add the offset to the frame num, do some range checks, and voi la. 
+
+The problem is though, for all of these methods the address space can get VERY huge. We're talking like these page tables start to get bigger than a page itself, which will make thigns even more complex. So what do we do? One way of dealing with this is by using **hierarchical page tables** which essentially means not that the page number consists of its own internal page number and offset. This means you need multiple page tables so their no longer contiguous. This basically allocates extra memory for storing addresses in and of themselves. This starts to get rediculous for large address spaces like in the case of 64 bit architectures because each time you access a new page table (for each layer of the hierarchy) oyu need to do a whole memory access!! and holy shit, this starts to get expensive right away, anything above three should not be a thing...
+
+A solution is the **hashed page table** the HPT takes in a page number and stores both that page number and its corresponding frame number in a table at the index given by the HASH of its page number. There may be multiple at one hash index so that's why we need to store the page number aswell, so they can be compared to find the actual one. The tradeoff here is achieving less memory accesses at the price of some extra pure computation (exectuing the hash function and collision correction logic [checking for the entry with the right page number if muliple]) 
+
+<h2>Virual Memory Abstraction</h2>
+
+So as we know the whole point of virtual addresses are protection from other processes and to give the programmer an illusion of infinite memory. This is only made possible however if we can run a process WITHOUT having all this potentially infinite memory loaded. This is made possible by swappiness with the disk, but we must ensure that the code that is put in memory is the code that will often be used! This of course prompts a new question, when should a page be loaded into memory at all? You could let the programmer decide, you could leave it to the compiler, but more likely its  a good idea to simply put the page into memory the first time that it is references, and evist the last page to be referenced. This strategy is called **demand paging** There is also such a thing as predictive paging, though the pursuit is difficult as there exist many different branches in the code. when the entire program is not in memory, the page tables valid bit is used to tell whether or not it is currently in memory. If not, a PAGE FAULT is called which causes teh kernel to take control and go to the DISK and retrieve the desired page. The OS uses a classic IO queue to make the process wait for access to the disk, it is then replaced in the ready queue when it is ready.
+
+If a page consists of purely code, you don't actually need to store the page in the swap space on the harddrive when it is evicted, because you can always re read it from the executable file. so at any given moment the page couold live in three places! We'll need to rememeber where in the page file. Demand paging only really works because of the general tendency for programs to exihibit temporal and spatial locality. So basically, it is more likely that things will be accessed that are in the same page as the last instruction. This is why the following ETA calculation tends to result in faster access times:
+
+$$\left(1-\rho_{\text {fault}}\right) C_{m a}+\rho_{\text {fault}} C_{\text {pagefault}}$$
+
 
